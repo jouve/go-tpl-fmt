@@ -1,0 +1,172 @@
+diff --git a/lex.go b/lex.go
+index 29403dd..fc21f84 100644
+--- a/lex.go
++++ b/lex.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+
+-package parse
++package cmd
+
+ import (
+ 	"fmt"
+@@ -11,6 +11,14 @@ import (
+ 	"unicode/utf8"
+ )
+
++// Pos represents a byte position in the original input text from which
++// this template was parsed.
++type Pos int
++
++func (p Pos) Position() Pos {
++	return p
++}
++
+ // item represents a token or text string returned from the scanner.
+ type item struct {
+ 	typ  itemType // The type of this item.
+@@ -50,15 +58,17 @@ const (
+ 	itemIdentifier // alphanumeric identifier not starting with '.'
+ 	itemLeftDelim  // left action delimiter
+ 	itemLeftParen  // '(' inside action
++	itemLeftTrimDelim
+ 	itemNumber     // simple number, including imaginary
+ 	itemPipe       // pipe symbol
+ 	itemRawString  // raw quoted string (includes quotes)
+ 	itemRightDelim // right action delimiter
+ 	itemRightParen // ')' inside action
+-	itemSpace      // run of spaces separating arguments
+-	itemString     // quoted string (includes quotes)
+-	itemText       // plain text
+-	itemVariable   // variable starting with '$', such as '$' or  '$1' or '$hello'
++	itemRightTrimDelim
++	itemSpace    // run of spaces separating arguments
++	itemString   // quoted string (includes quotes)
++	itemText     // plain text
++	itemVariable // variable starting with '$', such as '$' or  '$1' or '$hello'
+ 	// Keywords appear after all the rest.
+ 	itemKeyword  // used only to delimit the keywords
+ 	itemBlock    // block keyword
+@@ -203,13 +213,6 @@ func (l *lexer) nextItem() item {
+ 	return <-l.items
+ }
+
+-// drain drains the output so the lexing goroutine will exit.
+-// Called by the parser, not in the lexing goroutine.
+-func (l *lexer) drain() {
+-	for range l.items {
+-	}
+-}
+-
+ // lex creates a new scanner for the input string.
+ func lex(name, input, left, right string, emitComment, breakOK, continueOK bool) *lexer {
+ 	if left == "" {
+@@ -254,18 +257,11 @@ const (
+ // lexText scans until an opening action delimiter, "{{".
+ func lexText(l *lexer) stateFn {
+ 	if x := strings.Index(l.input[l.pos:], l.leftDelim); x >= 0 {
+-		ldn := Pos(len(l.leftDelim))
+ 		l.pos += Pos(x)
+-		trimLength := Pos(0)
+-		if hasLeftTrimMarker(l.input[l.pos+ldn:]) {
+-			trimLength = rightTrimLength(l.input[l.start:l.pos])
+-		}
+-		l.pos -= trimLength
+ 		if l.pos > l.start {
+ 			l.line += strings.Count(l.input[l.start:l.pos], "\n")
+ 			l.emit(itemText)
+ 		}
+-		l.pos += trimLength
+ 		l.ignore()
+ 		return lexLeftDelim
+ 	}
+@@ -279,11 +275,6 @@ func lexText(l *lexer) stateFn {
+ 	return nil
+ }
+
+-// rightTrimLength returns the length of the spaces at the end of the string.
+-func rightTrimLength(s string) Pos {
+-	return Pos(len(s) - len(strings.TrimRight(s, spaceChars)))
+-}
+-
+ // atRightDelim reports whether the lexer is at a right delimiter, possibly preceded by a trim marker.
+ func (l *lexer) atRightDelim() (delim, trimSpaces bool) {
+ 	if hasRightTrimMarker(l.input[l.pos:]) && strings.HasPrefix(l.input[l.pos+trimMarkerLen:], l.rightDelim) { // With trim marker.
+@@ -295,27 +286,20 @@ func (l *lexer) atRightDelim() (delim, trimSpaces bool) {
+ 	return false, false
+ }
+
+-// leftTrimLength returns the length of the spaces at the beginning of the string.
+-func leftTrimLength(s string) Pos {
+-	return Pos(len(s) - len(strings.TrimLeft(s, spaceChars)))
+-}
+-
+ // lexLeftDelim scans the left delimiter, which is known to be present, possibly with a trim marker.
+ func lexLeftDelim(l *lexer) stateFn {
+ 	l.pos += Pos(len(l.leftDelim))
+-	trimSpace := hasLeftTrimMarker(l.input[l.pos:])
+-	afterMarker := Pos(0)
+-	if trimSpace {
+-		afterMarker = trimMarkerLen
++	l.emit(itemLeftDelim)
++	if len(l.input[l.pos:]) >= 2 && l.input[l.pos] == trimMarker {
++		if !isSpace(rune(l.input[l.pos+1])) {
++			return l.errorf("invalid rune after left trim token")
++		}
++		l.pos += trimMarkerLen
++		l.emit(itemLeftTrimDelim)
+ 	}
+-	if strings.HasPrefix(l.input[l.pos+afterMarker:], leftComment) {
+-		l.pos += afterMarker
+-		l.ignore()
++	if strings.HasPrefix(l.input[l.pos:], leftComment) {
+ 		return lexComment
+ 	}
+-	l.emit(itemLeftDelim)
+-	l.pos += afterMarker
+-	l.ignore()
+ 	l.parenDepth = 0
+ 	return lexInsideAction
+ }
+@@ -338,11 +322,9 @@ func lexComment(l *lexer) stateFn {
+ 	if trimSpace {
+ 		l.pos += trimMarkerLen
+ 	}
++	l.emit(itemRightTrimDelim)
+ 	l.pos += Pos(len(l.rightDelim))
+-	if trimSpace {
+-		l.pos += leftTrimLength(l.input[l.pos:])
+-	}
+-	l.ignore()
++	l.emit(itemRightDelim)
+ 	return lexText
+ }
+
+@@ -351,14 +333,11 @@ func lexRightDelim(l *lexer) stateFn {
+ 	trimSpace := hasRightTrimMarker(l.input[l.pos:])
+ 	if trimSpace {
+ 		l.pos += trimMarkerLen
++		l.emit(itemRightTrimDelim)
+ 		l.ignore()
+ 	}
+ 	l.pos += Pos(len(l.rightDelim))
+ 	l.emit(itemRightDelim)
+-	if trimSpace {
+-		l.pos += leftTrimLength(l.input[l.pos:])
+-		l.ignore()
+-	}
+ 	return lexText
+ }
+
+@@ -670,10 +649,6 @@ func isAlphaNumeric(r rune) bool {
+ 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+ }
+
+-func hasLeftTrimMarker(s string) bool {
+-	return len(s) >= 2 && s[0] == trimMarker && isSpace(rune(s[1]))
+-}
+-
+ func hasRightTrimMarker(s string) bool {
+ 	return len(s) >= 2 && isSpace(rune(s[0])) && s[1] == trimMarker
+ }
