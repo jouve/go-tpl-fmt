@@ -10,7 +10,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "go-tpl-fmt",
-	Short: "The uncompromising code formatter.",
+	Short: "The uncompromising go-template formatter.",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		run := formatFile
@@ -19,7 +19,7 @@ var rootCmd = &cobra.Command{
 		}
 		var result *multierror.Error
 		for i, arg := range args {
-			log.Printf("[%d/%d] %s", i, len(args), arg)
+			log.Printf("[%d/%d] %s", i+1, len(args), arg)
 			if err := run(arg); err != nil {
 				result = multierror.Append(result, err)
 			}
