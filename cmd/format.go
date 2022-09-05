@@ -16,6 +16,7 @@ func format(input string) (string, error) {
 	var prev, prevNonSpace item
 	lex := lex("", input, "", "", true, true, true)
 	for current := lex.nextItem(); current.typ != itemEOF; current = lex.nextItem() {
+		//sb.WriteString(fmt.Sprintf("[%d:%d:%d]", prevNonSpace.typ, prev.typ, current.typ))
 		switch current.typ {
 		case itemError:
 			return "", errors.New(current.val)
@@ -35,8 +36,7 @@ func format(input string) (string, error) {
 		case itemSpace:
 			if strings.Contains(current.val, "\n") {
 				sb.WriteString(strings.TrimLeft(current.val, " "))
-			}
-			if prev.typ == itemLeftDelim || prev.typ == itemLeftTrimDelim {
+			} else if prev.typ == itemLeftDelim || prev.typ == itemLeftTrimDelim {
 				sb.WriteString(current.val)
 			}
 		case itemRawString:
@@ -50,7 +50,8 @@ func format(input string) (string, error) {
 			case current.typ == itemField && (prev.typ == itemField || prev.typ == itemVariable || prev.typ == itemRightParen): // no space between .a & .b in .a.b or ).b
 			case current.typ == itemChar && current.val == ",": // no space before "," in a, b := range ...
 			case prevNonSpace.typ == itemLeftParen: // no space after (
-			case prev.typ != itemSpace && (prevNonSpace.typ == itemLeftDelim || prevNonSpace.typ == itemLeftTrimDelim): // see line #39
+			case prevNonSpace.typ == itemLeftDelim && prev.typ == itemSpace: // see line #39
+			case prev.typ == itemLeftTrimDelim: // leftTrimDelim contains a space
 			default:
 				sb.WriteRune(' ')
 			}
