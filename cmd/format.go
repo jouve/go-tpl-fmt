@@ -50,7 +50,7 @@ func format(input string) (string, error) {
 			case current.typ == itemField && (prev.typ == itemField || prev.typ == itemVariable || prev.typ == itemRightParen): // no space between .a & .b in .a.b or ).b
 			case current.typ == itemChar && current.val == ",": // no space before "," in a, b := range ...
 			case prevNonSpace.typ == itemLeftParen: // no space after (
-			case prevNonSpace.typ == itemLeftDelim || prevNonSpace.typ == itemLeftTrimDelim: // see line #35
+			case prev.typ != itemSpace && (prevNonSpace.typ == itemLeftDelim || prevNonSpace.typ == itemLeftTrimDelim): // see line #39
 			default:
 				sb.WriteRune(' ')
 			}
