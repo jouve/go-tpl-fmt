@@ -40,7 +40,7 @@ func format(input string) (string, error) {
 				sb.WriteString(current.val)
 			}
 		case itemRawString:
-			sb.WriteString(current.val)
+			sb.WriteString(formatSafe(current.val))
 		case itemRightParen: // no space before )
 			sb.WriteString(current.val)
 		case itemText: // "plain" text
@@ -52,6 +52,7 @@ func format(input string) (string, error) {
 			case prevNonSpace.typ == itemLeftParen: // no space after (
 			case prevNonSpace.typ == itemLeftDelim && prev.typ == itemSpace: // see line #39
 			case prev.typ == itemLeftTrimDelim: // leftTrimDelim contains a space
+			case prev.typ == itemSpace && strings.Contains(prev.val, "\n"):
 			default:
 				sb.WriteRune(' ')
 			}
@@ -64,6 +65,14 @@ func format(input string) (string, error) {
 		}
 	}
 	return sb.String(), nil
+}
+
+func formatSafe(input string) string {
+	formatted, err := format(input)
+	if err != nil {
+		return input
+	}
+	return formatted
 }
 
 func formatFile(name string) error {
