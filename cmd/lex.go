@@ -290,10 +290,7 @@ func (l *lexer) atRightDelim() (delim, trimSpaces bool) {
 func lexLeftDelim(l *lexer) stateFn {
 	l.pos += Pos(len(l.leftDelim))
 	l.emit(itemLeftDelim)
-	if len(l.input[l.pos:]) >= 2 && l.input[l.pos] == trimMarker {
-		if !isSpace(rune(l.input[l.pos+1])) {
-			return l.errorf("invalid rune after left trim token")
-		}
+	if hasLeftTrimMarker(l.input[l.pos:]) {
 		l.pos += trimMarkerLen
 		l.emit(itemLeftTrimDelim)
 	}
@@ -647,6 +644,10 @@ func isSpace(r rune) bool {
 // isAlphaNumeric reports whether r is an alphabetic, digit, or underscore.
 func isAlphaNumeric(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func hasLeftTrimMarker(s string) bool {
+	return len(s) >= 2 && s[0] == trimMarker && isSpace(rune(s[1]))
 }
 
 func hasRightTrimMarker(s string) bool {
