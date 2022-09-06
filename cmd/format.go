@@ -40,15 +40,26 @@ func format(input string) (string, error) {
 				sb.WriteString(current.val)
 			}
 		case itemRawString:
+			if prev.typ != itemLeftDelim && prev.typ != itemLeftTrimDelim {
+				sb.WriteRune(' ')
+			}
 			sb.WriteString(formatSafe(current.val))
 		case itemRightParen: // no space before )
 			sb.WriteString(current.val)
 		case itemText: // "plain" text
 			sb.WriteString(current.val)
+		case itemField:
+			if prev.typ != itemField && prev.typ != itemVariable && prev.typ != itemRightParen { // no space between .a & .b in .a.b or ).b
+				sb.WriteRune(' ')
+			}
+			sb.WriteString(current.val)
+		case itemChar:
+			if current.val != "," { // no space before "," in a, b := range ...
+				sb.WriteRune(' ')
+			}
+			sb.WriteString(current.val)
 		default:
 			switch {
-			case current.typ == itemField && (prev.typ == itemField || prev.typ == itemVariable || prev.typ == itemRightParen): // no space between .a & .b in .a.b or ).b
-			case current.typ == itemChar && current.val == ",": // no space before "," in a, b := range ...
 			case prevNonSpace.typ == itemLeftParen: // no space after (
 			case prevNonSpace.typ == itemLeftDelim && prev.typ == itemSpace: // see line #39
 			case prev.typ == itemLeftTrimDelim: // leftTrimDelim contains a space
